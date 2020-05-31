@@ -185,6 +185,35 @@ u_reorder.head()
 # <img src="https://i.imgur.com/wMmC4hb.jpg" width="400">
 
 # In[ ]:
+#Keep last 5 orders
+op['order_number_back'] = op.groupby('user_id')['order_number'].transform(max) - op.order_number +1 
+op.head()
+
+
+op5 = op[op.order_number_back <= 5]
+op5.head()
+
+#Last 5 oders of each user and product_id
+last_five = op5.groupby(['user_id','product_id'])[['order_id']].count()
+last_five.columns = ['times_last5']
+last_five.head()
+
+#Size of orders for each user
+u_last_five = last_five.groupby ('user_id')[["times_last5"]].count()
+u_last_five.columns = ['size_last5']
+u_last_five.head()
+
+#Mean of last 5 orders of each customer
+u_last_five ['mean_size_last5']= u_last_five.size_last5 / 5
+u_last_five.head()
+
+#Max days of 5 last orders for each user
+u_last_five ['max_days_5'] = op5.groupby ('user_id') [["days_since_prior_order"]].max()
+u_last_five.head()
+
+#Mean days of 5 last orders for each user
+u_last_five ['mean_days_5'] = op5.groupby ('user_id') [["days_since_prior_order"]].mean()
+u_last_five.head()
 
 
 user = user.merge(u_reorder, on='user_id', how='left')
@@ -268,6 +297,15 @@ p_reorder.head()
 
 # In[ ]:
 
+#Mean position of each product
+p_reorder['avg_position'] = op.groupby ('product_id')[["add_to_cart_order"]].mean()
+p_reorder.head()
+
+#Probability of reordered for each product within last 5 orders of the users
+op5_ratio = op5.groupby ('product_id')["reordered"].mean().to_frame ('p_reorder_last5')
+op5_ratio = op5_ratio.reset_index()
+op5_ratio.head()
+
 
 #Merge the prd DataFrame with reorder
 prd = prd.merge(p_reorder, on='product_id', how='left')
@@ -286,8 +324,17 @@ prd.head()
 
 # In[ ]:
 
+#Merge the prd DataFrame with op5
+prd = prd.merge(op5_ratio, on='product_id', how='left')
+gc.collect()
+prd.head()
+
+
+
 
 prd['p_reorder_ratio'] = prd['p_reorder_ratio'].fillna(value=0)
+prd['avg_position'] = prd ['avg_position'].fillna(value=0)
+prd['p_reorder_last5'] = prd['p_reorder_last5'].fillna(value=0)
 prd.head()
 
 
@@ -431,6 +478,39 @@ uxp_ratio.head()
 #Remove temporary DataFrames
 del [times, first_order_no, span]
 
+#One-shot ratio
+item= op.groupby(['product_id', 'user_id'])[['order_id']].count()
+item.columns = ['total']
+item.head(10)
+
+item_one = item[item.total==1]
+item_one.head()
+
+item_one = item_one.groupby('product_id')[['total']].count()
+item_one.columns = ['customers_one_shot']
+item_one.head(10)
+
+item=item.reset_index(1)
+item.head(10)
+
+item_size = item.groupby('product_id')[['user_id']].count()
+item_size.columns = ['unique_customers']
+item_size.head(10)
+
+results = pd.merge(item_one, item_size, on='product_id', how='right')
+results.head()
+
+results['one_shot_ratio'] = results['customers_one_shot']/results['unique_customers']
+results.head()
+
+uxp_ratio = uxp_ratio.merge(results, on=['product_id'], how='left')
+uxp_ratio.head()
+
+uxp_ratio['one_shot_ratio']=uxp_ratio['one_shot_ratio'].fillna(0)
+del results, item, item_one, item_size
+
+uxp_ratio = uxp_ratio.drop(['customers_one_shot', 'unique_customers'], axis=1)
+uxp_ratio.head()
 
 # ### 2.3.2.4 Merge the final feature with uxp DataFrame
 # The new feature will be merged with the uxp DataFrame (section 2.3.1) which keep all the features based on combinations of user-products. We perform a left join as we want to keep all the user-products that we have created on the uxp DataFrame
@@ -441,98 +521,27 @@ del [times, first_order_no, span]
 
 
 uxp = uxp.merge(uxp_ratio, on=['user_id', 'product_id'], how='left')
-
 del uxp_ratio
 uxp.head()
 
-
-# ### 2.3.3 How many times a customer bought a product on its last 5 orders
-# For this feature, we want to keep the last five orders for each customer and get how many times bought any product on them. To achieve this we need to:
-# * Create a new variable ('order_number_back') which keeps the order_number for each order in reverse order
-# * Keep only the last five orders for each order
-# * Perform a .groupby( ) on users and products to get how many times each customer bought a product.
-# * Create the following ratio:
-# 
-# ![](https://latex.codecogs.com/gif.latex?times%5C%20last%20%5C5%5C%20%28of%5C%20a%5C%20purchased%5C%20product%5C%20from%5C%20a%5C%20user%29%3D%5Cfrac%7BTimes%5C%20a%5C%20user%5C%20bought%5C%20a%5C%20product%5C%20on%5C%20its%5C%20last%5C%205%5C%20orders%7D%7BTotal%5C%20orders%5C%20%3D5%7D)
-
-# #### 2.3.3.1 Create a new variable ('order_number_back') which keeps the order_number for each order in reverse order
-# In this step we show how we create a reverse order_number for each customer. <br>
-# Have a look at the orders of customer 1 (user_id == 1)
-
-# In[ ]:
-
-
-op[op.user_id==1].head(45)
-
-
-# Our goal is a to create a new column ('order_number_back') which indicates the last order as first, the second from the end as second and so on. To achieve this, we get the highest order_number (max) for user_id==1 and we subtract the order_number of each order from it. Thus for last order (order_number == 10) that will be: 
-# <br>
-# <br>
-# 
-# ![order_number_back](https://latex.codecogs.com/png.latex?%5Cdpi%7B200%7D%20%5Ctiny%20%5Cfontsize%7B%20%7D%7Bbaselineskip%7D%20order%5C_number%5C_back%28x%29%3D%20order%5C_number.max%28%29%20-order%5C_number%28x%29%3D10%20-%2010%20%3D%200)
-# 
-# And as we want the last order to be marked as first, rather than zeroth, the previous formula will be:
-# 
-# ![](https://latex.codecogs.com/png.latex?%5Cdpi%7B200%7D%20%5Ctiny%20%5Cfontsize%7B%20%7D%7Bbaselineskip%7D%20order%5C_number%5C_back%28x%29%3D%20order%5C_number.max%28%29%20-order%5C_number%28x%29%3D10%20-%2010%20&plus;1%3D%201)
-# 
-# > Note that order_number.max( ) is a single value, where order_number is a 1-D array (column/Series)
-# 
-# By applying the above formula to the orders of user_id == 1 we get the following results:
-# ![](https://i.imgur.com/toda8ay.png)
-
-# In the next code block we perform the same calculations for all users. We .groupby( ) op by the user_id and we select the column order_number. With .transform(max) we request to get the highest number of the column order_number for each group & with minus (-) op.order_number we substract the order_number of each row. Finally we add 1 for the reason mentioned above.
-# 
-# > .transform( ) perform some group-specific computations and return a like-indexed object. 
-
-# In[ ]:
-
-
-op['order_number_back'] = op.groupby('user_id')['order_number'].transform(max) - op.order_number +1 
-op.head(15)
-
-
-# Check that the formula has been applied to all users. Here we check the new column for a random user (user_id== 7):
-
-# In[ ]:
-
-
-op[op.user_id==7].head(10)
-
-
-# #### 2.3.3.2 Keep only the last five orders for each customer
-# With the use of order_number_back we can now select to keep only the last five orders of each customer:
-
-# In[ ]:
-
-
-op5 = op[op.order_number_back <= 5]
-op5.head(15)
-
-
-# #### 2.3.3.3 Perform a .groupby( ) on users and products to get how many times each customer bought every product.
-# Having kept the last 5 orders for each user, we perform a .groupby( ) on user_id & product_id. With .count( ) we get how many times each customer bought a product.
-
-# In[ ]:
-
-
-last_five = op5.groupby(['user_id','product_id'])[['order_id']].count()
-last_five.columns = ['times_last5']
-last_five.head(10)
-
-
-# So for user_id==1, the product 196 has been ordered on all of its last five orders, where the product 35951 has been ordered only one time.
-
-# #### 2.3.3.5 Merge the final feature with uxp DataFrame
-# The new feature will be merged with the uxp DataFrame (section 2.3.1) which keep all the features based on combinations of user-products. We perform a left join as we want to keep all the user-products that we have created on the uxp DataFrame
-# 
-# <img src="https://i.imgur.com/ObfHDPl.jpg" width="400">
-
-# In[ ]:
-
-
+#How many times a user bought a product on its last 5 orders (already exist)
 uxp = uxp.merge(last_five, on=['user_id', 'product_id'], how='left')
+uxp.head()
 
-del [op5 , last_five]
+#Fill NaN values
+uxp = uxp.fillna(0)
+uxp.head()
+
+#Ratio of last 5 orders of each customer for a product
+uxp ['last5_ ratio']= uxp.times_last5 / 5
+uxp.head()
+
+#Max days of 5 last orders for each product of users
+uxp['max_days_last5'] = op5.groupby('user_id')[["days_since_prior_order"]].max()
+uxp.head()
+
+#Mean days of 5 last orders for each product of users
+uxp['mean_days_last5'] = op5.groupby('user_id')[["days_since_prior_order"]].mean()
 uxp.head()
 
 
@@ -603,7 +612,7 @@ data.head()
 # In[ ]:
 
 
-del op, user, prd, uxp
+del op, user, prd, uxp, last_five, op5, total_orders
 gc.collect()
 
 
