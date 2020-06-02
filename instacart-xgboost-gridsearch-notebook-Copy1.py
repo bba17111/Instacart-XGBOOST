@@ -207,6 +207,7 @@ u_last_five.head()
 u_last_five ['mean_size_last5']= u_last_five.size_last5 / 5
 u_last_five.head()
 
+
 #Max days of 5 last orders for each user
 u_last_five ['max_days_5'] = op5.groupby ('user_id') [["days_since_prior_order"]].max()
 u_last_five.head()
@@ -354,7 +355,14 @@ prd.head()
 
 # Create distinct groups for each combination of user and product, count orders, save the result for each user X product to a new DataFrame 
 uxp = op.groupby(['user_id', 'product_id'])['order_id'].count().to_frame('uxp_total_bought')
+uxp = uxp.reset_index()
 uxp.head()
+
+#uxp_last5
+uxp_last5 = op5.groupby(['user_id', 'product_id'])['order_id'].count().to_frame('uxp_total_bought_last5')
+uxp_last5 = uxp_last5.reset_index()
+uxp_last5 = uxp_last5.fillna(0)
+uxp_last5.head()
 
 
 # In[ ]:
@@ -532,6 +540,10 @@ uxp.head()
 uxp = uxp.fillna(0)
 uxp.head()
 
+#Max days of 5 last orders for each product of users
+uxp['max_days'] = op.groupby('user_id')[["days_since_prior_order"]].max()
+uxp.head()
+
 #Ratio of last 5 orders of each customer for a product
 uxp ['last5_ ratio']= uxp.times_last5 / 5
 uxp.head()
@@ -542,6 +554,10 @@ uxp.head()
 
 #Mean days of 5 last orders for each product of users
 uxp['mean_days_last5'] = op5.groupby('user_id')[["days_since_prior_order"]].mean()
+uxp.head()
+
+#Median day of 5 last orders for each product of users
+uxp['median_day_last5'] = op5.groupby('user_id')[["days_since_prior_order"]].median()
 uxp.head()
 
 
