@@ -848,7 +848,7 @@ model.get_xgb_params()
 
 # In[ ]:
 
-'''
+
 ###########################
 ## DISABLE WARNINGS
 ###########################
@@ -909,7 +909,7 @@ del [X_train, y_train]
 
 
 model.get_params()
-'''
+
 
 
 #The method .RandomizedSearchCV( )
